@@ -1,0 +1,2 @@
+ALTER TABLE placement_drives
+ADD COLUMN IF NOT EXISTS attendance_published BOOLEAN NOT NULL DEFAULT FALSE;

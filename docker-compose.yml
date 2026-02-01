@@ -1,0 +1,115 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: placeops_postgres
+    environment:
+      POSTGRES_USER: placeops
+      POSTGRES_PASSWORD: placeops_pass
+      POSTGRES_DB: placeops_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/sql/create_tables.sql:/docker-entrypoint-initdb.d/01_create_tables.sql
+      - ./backend/sql/add_auto_published_flag.sql:/docker-entrypoint-initdb.d/02_add_auto_published_flag.sql
+      - ./backend/sql/add_drive_selections.sql:/docker-entrypoint-initdb.d/03_add_drive_selections.sql
+      - ./backend/sql/add_pdf_column.sql:/docker-entrypoint-initdb.d/04_add_pdf_column.sql
+      - ./backend/sql/add_status_column.sql:/docker-entrypoint-initdb.d/05_add_status_column.sql
+      - ./backend/sql/materialized_views.sql:/docker-entrypoint-initdb.d/06_materialized_views.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U placeops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: placeops_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@placeops.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+  redis:
+    image: redis:7-alpine
+    container_name: placeops_redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: placeops_backend
+    environment:
+      DATABASE_URL: postgres://placeops:placeops_pass@postgres:5432/placeops_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev_secret_key_change_in_production
+      PORT: 5000
+      NODE_ENV: development
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run dev
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/uploads:/app/uploads
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: placeops_worker
+    environment:
+      DATABASE_URL: postgres://placeops:placeops_pass@postgres:5432/placeops_db
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run start:worker
+    volumes:
+      - ./backend/worker.js:/app/worker.js
+      - ./backend/uploads:/app/uploads
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: placeops_scheduler
+    environment:
+      DATABASE_URL: postgres://placeops:placeops_pass@postgres:5432/placeops_db
+      REDIS_URL: redis://redis:6379
+      MATERIALIZED_VIEW_REFRESH_INTERVAL: "0 * * * *"
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run start:scheduler
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  default:
+    name: placeops_network

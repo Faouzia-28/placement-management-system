@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eligibility Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 Eligibility System Test</h1>
+    
+    <div class="container">
+        <h2>Step 1: Check Current Drives</h2>
+        <button onclick="checkDrives()">📊 Check All Drives</button>
+        <div id="drives-result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 2: Check Student Eligibility</h2>
+        <button onclick="checkStudentEligibility()">👤 Check Student Eligibility</button>
+        <div id="student-result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 3: Fix Eligibility Issues</h2>
+        <button onclick="fixEligibility()" style="background: #28a745;">🔧 Fix Eligibility System</button>
+        <div id="fix-result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+
+        async function checkDrives() {
+            const resultDiv = document.getElementById('drives-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = '📊 Checking drives...';
+
+            try {
+                // Try without authentication first (this will fail but show us the error)
+                let response = await fetch(`${API_BASE}/drives`);
+                let drives;
+                
+                if (!response.ok) {
+                    // If authentication fails, use the debug endpoint which doesn't require auth
+                    const debugResponse = await fetch(`${API_BASE}/_debug/check-drive-status`);
+                    if (debugResponse.ok) {
+                        const debugData = await debugResponse.json();
+                        drives = debugData.drives;
+                    } else {
+                        throw new Error(`API Error: ${response.status} - ${response.statusText}`);
+                    }
+                } else {
+                    drives = await response.json();
+                }
+
+                if (!Array.isArray(drives)) {
+                    throw new Error(`Expected array of drives, got: ${typeof drives}`);
+                }
+
+                let output = `Found ${drives.length} drives:\n\n`;
+                drives.forEach(drive => {
+                    output += `Drive ${drive.drive_id}: ${drive.company_name} - ${drive.job_title}\n`;
+                    output += `  Status: ${drive.status || 'undefined'}\n`;
+                    output += `  Auto Published: ${drive.auto_published || 'false'}\n`;
+                    output += `  Published At: ${drive.published_at || 'not published'}\n`;
+                    output += `  Min CGPA: ${drive.min_cgpa || 'not set'}\n`;
+                    output += `  Created: ${new Date(drive.created_at).toLocaleString()}\n\n`;
+                });
+
+                if (drives.length === 0) {
+                    output += "No drives found. Create a drive as HEAD user first.\n";
+                }
+
+                resultDiv.className = 'result success';
+                resultDiv.textContent = output;
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `Error: ${error.message}\n\nThis is likely because the API requires authentication. The drives data will be shown in the eligibility check.`;
+            }
+        }
+
+        async function checkStudentEligibility() {
+            const resultDiv = document.getElementById('student-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = '👤 Checking student eligibility...';
+
+            try {
+                // First, get student info (assuming student1@college.edu with user_id 3)
+                const studentResponse = await fetch(`${API_BASE}/eligibility/my-eligible`, {
+                    headers: {
+                        'Authorization': 'Bearer fake-token-for-testing'
+                    }
+                });
+
+                let output = 'Student Eligibility Check:\n\n';
+                
+                if (studentResponse.ok) {
+                    const eligibleDrives = await studentResponse.json();
+                    output += `Student sees ${eligibleDrives.length} eligible drives:\n\n`;
+                    
+                    eligibleDrives.forEach(drive => {
+                        output += `- ${drive.company_name} (${drive.job_title})\n`;
+                    });
+                } else {
+                    output += 'Could not check student eligibility (authentication required)\n';
+                }
+
+                // Check eligibility records directly
+                const debugResponse = await fetch(`${API_BASE}/_debug/check-drive-status`);
+                if (debugResponse.ok) {
+                    const debugData = await debugResponse.json();
+                    output += `\n--- Database Analysis ---\n`;
+                    output += `Eligibility Records: ${debugData.eligibility_tables.drive_eligibility_results}\n`;
+                    output += `Coordinator Selections: ${debugData.eligibility_tables.drive_coordinator_selections}\n`;
+                    
+                    if (debugData.student_eligibility_sample) {
+                        const sample = debugData.student_eligibility_sample;
+                        output += `\nSample Student Analysis:\n`;
+                        if (sample.student) {
+                            output += `Student: ${sample.student.name} (${sample.student.email})\n`;
+                        }
+                        if (sample.profile) {
+                            output += `CGPA: ${sample.profile.cgpa}, 10th: ${sample.profile.tenth_percent}%, 12th: ${sample.profile.twelfth_percent}%, Backlogs: ${sample.profile.active_backlogs}\n`;
+                        }
+                        if (sample.posted_drives) {
+                            output += `\nPosted Drives (${sample.posted_drives.length}):\n`;
+                            sample.posted_drives.forEach(drive => {
+                                output += `- ${drive.company_name}: Min CGPA ${drive.min_cgpa}, Auto: ${drive.auto_published}\n`;
+                            });
+                        }
+                        if (sample.eligibility_records) {
+                            output += `\nEligibility Records (${sample.eligibility_records.length}):\n`;
+                            sample.eligibility_records.forEach(record => {
+                                output += `- ${record.company_name}: Eligible=${record.is_eligible}, Status=${record.status}\n`;
+                            });
+                        }
+                        if (sample.coordinator_selections) {
+                            output += `\nCoordinator Selections (${sample.coordinator_selections.length}):\n`;
+                            sample.coordinator_selections.forEach(selection => {
+                                output += `- ${selection.company_name}\n`;
+                            });
+                        }
+                    }
+                }
+
+                resultDiv.className = 'result success';
+                resultDiv.textContent = output;
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function fixEligibility() {
+            const resultDiv = document.getElementById('fix-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = '🔧 Fixing eligibility system...';
+
+            try {
+                const response = await fetch(`${API_BASE}/_debug/fix-drive-status`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    let output = 'Eligibility Fix Results:\n\n';
+                    output += `Applied ${result.fixes_applied.length} fixes:\n\n`;
+                    result.fixes_applied.forEach(fix => {
+                        output += `✅ ${fix}\n`;
+                    });
+                    
+                    output += '\n🎉 Eligibility system has been fixed!\n';
+                    output += '\nNext steps:\n';
+                    output += '1. Refresh your student dashboard\n';
+                    output += '2. Check the "Eligible Drives" tab\n';
+                    output += '3. If still no drives, check if coordinator published the drive\n';
+
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = output;
+                } else {
+                    throw new Error(result.message || 'Fix failed');
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Auto-run drive check on page load
+        window.addEventListener('load', () => {
+            setTimeout(checkDrives, 1000);
+        });
+    </script>
+</body>
+</html>

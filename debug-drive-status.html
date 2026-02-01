@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drive Status Debug Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.fix {
+            background: #28a745;
+        }
+        button.fix:hover {
+            background: #1e7e34;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .port-selector {
+            margin-bottom: 20px;
+        }
+        .port-selector label {
+            margin-right: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Drive Status Debug Tool</h1>
+    
+    <div class="container">
+        <h2>Backend Port Configuration</h2>
+        <div class="port-selector">
+            <label>
+                <input type="radio" name="port" value="4000" checked> Port 4000
+            </label>
+            <label>
+                <input type="radio" name="port" value="5000"> Port 5000
+            </label>
+        </div>
+        <p><strong>Current Backend URL:</strong> <span id="backend-url">http://localhost:4000</span></p>
+    </div>
+
+    <div class="container">
+        <h2>Step 1: Check Drive Status</h2>
+        <p>This will analyze your database and identify any issues with drive status display.</p>
+        <button onclick="checkDriveStatus()">🔍 Check Drive Status</button>
+        <div id="check-result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 2: Fix Drive Status Issues</h2>
+        <p>This will automatically fix common drive status issues found in Step 1.</p>
+        <button class="fix" onclick="fixDriveStatus()">🔧 Fix Drive Status Issues</button>
+        <div id="fix-result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 3: Test Drive Flow</h2>
+        <p>After applying fixes, test the complete drive flow:</p>
+        <ol>
+            <li><strong>As HEAD:</strong> Post a new drive → Check "Posted Drives" tab</li>
+            <li><strong>As COORDINATOR:</strong> Publish the drive → Select eligible students</li>
+            <li><strong>As STUDENT:</strong> Check "Eligible Drives" tab → Should see the published drive</li>
+        </ol>
+    </div>
+
+    <script>
+        // Update backend URL when port changes
+        document.querySelectorAll('input[name="port"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const port = this.value;
+                const url = `http://localhost:${port}`;
+                document.getElementById('backend-url').textContent = url;
+            });
+        });
+
+        // Set initial URL based on selected port
+        window.addEventListener('load', function() {
+            const selectedPort = document.querySelector('input[name="port"]:checked').value;
+            const url = `http://localhost:${selectedPort}`;
+            document.getElementById('backend-url').textContent = url;
+        });
+
+        function getBackendUrl() {
+            const selectedPort = document.querySelector('input[name="port"]:checked').value;
+            return `http://localhost:${selectedPort}`;
+        }
+
+        async function checkDriveStatus() {
+            const resultDiv = document.getElementById('check-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = '🔍 Checking drive status...';
+
+            try {
+                const response = await fetch(`${getBackendUrl()}/api/_debug/check-drive-status`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                    
+                    // Show detailed summary
+                    let summary = '✅ Database Check Complete\\n\\n';
+                    summary += `📊 Found ${data.drives.length} drives\\n`;
+                    summary += `⚠️  Found ${data.issues.length} issues\\n`;
+                    
+                    // Show drive details
+                    if (data.drives.length > 0) {
+                        summary += '\\n📋 Drive Details:\\n';
+                        data.drives.forEach(drive => {
+                            summary += `- Drive ${drive.drive_id}: ${drive.company_name} (${drive.status || 'no status'})\\n`;
+                            summary += `  Auto Published: ${drive.auto_published || 'false'}\\n`;
+                            summary += `  Published At: ${drive.published_at || 'not published'}\\n`;
+                        });
+                    }
+                    
+                    // Show eligibility table info
+                    summary += `\\n🎯 Eligibility Records: ${data.eligibility_tables.drive_eligibility_results}\\n`;
+                    summary += `📝 Coordinator Selections: ${data.eligibility_tables.drive_coordinator_selections}\\n`;
+                    
+                    if (data.issues.length > 0) {
+                        summary += '\\nIssues found:\\n';
+                        data.issues.forEach(issue => summary += `- ${issue}\\n`);
+                        summary += '\\n💡 Click "Fix Drive Status Issues" to resolve these problems.';
+                    } else {
+                        summary += '\\n🎉 No issues found! If students still can\\'t see drives, the problem might be in eligibility calculation or coordinator selection.';
+                    }
+                    
+                    alert(summary);
+                } else {
+                    throw new Error(data.message || 'Check failed');
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Error: ${error.message}\\n\\nMake sure your backend is running on the selected port.`;
+            }
+        }
+
+        async function fixDriveStatus() {
+            const resultDiv = document.getElementById('fix-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = '🔧 Applying fixes...';
+
+            try {
+                const response = await fetch(`${getBackendUrl()}/api/_debug/fix-drive-status`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                    
+                    // Show summary
+                    let summary = '✅ Fixes Applied Successfully\\n\\n';
+                    summary += `🔧 Applied ${data.fixes_applied.length} fixes:\\n`;
+                    data.fixes_applied.forEach(fix => summary += `- ${fix}\\n`);
+                    summary += '\\n🎉 Drive status issues should now be resolved!\\n';
+                    summary += '\\nNext steps:\\n';
+                    summary += '1. Test the drive flow: HEAD post → COORDINATOR publish → STUDENT see eligible\\n';
+                    summary += '2. If issues persist, check the browser console for errors';
+                    
+                    alert(summary);
+                } else {
+                    throw new Error(data.message || 'Fix failed');
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Error: ${error.message}\\n\\nMake sure your backend is running on the selected port.`;
+            }
+        }
+    </script>
+</body>
+</html>
