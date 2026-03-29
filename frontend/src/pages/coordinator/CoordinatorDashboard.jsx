@@ -552,7 +552,7 @@ export default function CoordinatorDashboard(){
                               if (!window.confirm('Are you sure you want to publish attendance? This will finalize the drive and cannot be undone.')) return;
                               try {
                                 await api.post(`/attendance/${selectedDrive}/publish`);
-                                alert('Attendance published successfully! Drive has been completed.');
+                                console.info('Attendance published successfully. Drive has been completed.');
                                 // Refresh drives to update status
                                 const res = await api.get('/drives');
                                 setDrives(res.data);
@@ -697,7 +697,7 @@ export default function CoordinatorDashboard(){
                               if (!window.confirm('Are you sure you want to stop registrations for this drive? Students will no longer be able to register.')) return;
                               try {
                                 await api.post(`/drives/${selectedDrive}/stop-registrations`);
-                                alert('Registrations stopped successfully! Drive moved to attendance phase.');
+                                console.info('Registrations stopped successfully. Drive moved to attendance phase.');
                                 // Refresh drives to update status
                                 const res = await api.get('/drives');
                                 setDrives(res.data);
@@ -1050,7 +1050,7 @@ export default function CoordinatorDashboard(){
                                 selected_students: Array.from(selectedStudents)
                               });
                               console.log('Publish response:', res.data);
-                              alert('Drive published successfully!');
+                              console.info('Drive published successfully.');
                               // Update the drives list to reflect published status
                               setDrives(drives.map(d => d.drive_id === selectedDrive ? { ...d, status: 'posted' } : d));
                               // Fetch fresh drives list to sync with other users

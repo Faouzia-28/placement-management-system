@@ -114,7 +114,7 @@ export default function HeadDashboard(){
       await api.post('/drives', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      alert('Drive posted successfully!');
+      console.info('Drive posted successfully.');
       setForm({ company_name:'', job_title:'', domain_id:1, job_description:'', interview_date:'', min_cgpa:6, min_10th:60, min_12th:60, max_backlogs:0, pdf:null });
       setPdfName('');
       fetchDrives();
@@ -139,7 +139,7 @@ export default function HeadDashboard(){
       for(const driveId of selectedDrivesToDelete){
         await api.delete(`/drives/${driveId}`);
       }
-      alert(`${selectedDrivesToDelete.size} drive(s) deleted successfully!`);
+      console.info(`${selectedDrivesToDelete.size} drive(s) deleted successfully.`);
       setSelectedDrivesToDelete(new Set());
       fetchDrives();
     }catch(e){
@@ -172,7 +172,7 @@ export default function HeadDashboard(){
     setTriggeringEligibility(driveId);
     try{
       await api.post(`/drives/${driveId}/trigger-eligibility`);
-      alert('Eligibility filtering triggered successfully!');
+      console.info('Eligibility filtering triggered successfully.');
       fetchDrives();
     }catch(e){
       console.error(e);
@@ -749,7 +749,7 @@ export default function HeadDashboard(){
                               if (!window.confirm(`Are you sure you want to delete the drive "${drive.company_name} - ${drive.job_title}"? This will remove it from all panels and cannot be undone.`)) return;
                               try {
                                 await api.delete(`/drives/${drive.drive_id}`);
-                                alert('Drive deleted successfully!');
+                                console.info('Drive deleted successfully.');
                                 fetchDrives(); // Refresh the drives list
                               } catch (e) {
                                 console.error('Delete error:', e);
