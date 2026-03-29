@@ -1,11 +1,10 @@
-name: Build and Push Backend Image to ECR
+name: Build and Deploy Backend to ECS
 
 on:
   push:
     branches: [main]
     paths:
       - backend/**
-      - docker-compose.ecr.yml
       - .github/workflows/ci-ecr.yml
   workflow_dispatch:
 
@@ -15,6 +14,8 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.vars.outputs.image_uri }}
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
@@ -38,6 +39,7 @@ jobs:
         id: vars
         run: |
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "image_uri=$ECR_REGISTRY/$ECR_BACKEND_REPO:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Build backend image
         run: |
@@ -51,11 +53,95 @@ jobs:
           docker push "$ECR_REGISTRY/$ECR_BACKEND_REPO:${{ steps.vars.outputs.sha_short }}"
           docker push "$ECR_REGISTRY/$ECR_BACKEND_REPO:latest"
 
-      - name: Persist deployed image tag artifact
-        run: echo "${{ steps.vars.outputs.sha_short }}" > image-tag.txt
+  deploy-to-ecs:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}
+      ECS_CONTAINER_NAME: ${{ secrets.ECS_CONTAINER_NAME }}
+      IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
 
-      - name: Upload image tag artifact
-        uses: actions/upload-artifact@v4
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          name: image-tag
-          path: image-tag.txt
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate ECS configuration
+        run: |
+          set -euo pipefail
+          if [ -z "$ECS_CLUSTER" ]; then
+            echo "Missing required secret: ECS_CLUSTER"
+            exit 1
+          fi
+          if [ -z "$ECS_SERVICE" ]; then
+            echo "Missing required secret: ECS_SERVICE"
+            exit 1
+          fi
+          if [ -z "$ECS_CONTAINER_NAME" ]; then
+            echo "Missing required secret: ECS_CONTAINER_NAME"
+            exit 1
+          fi
+
+      - name: Fetch current task definition
+        id: current
+        run: |
+          set -euo pipefail
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query "services[0].taskDefinition" \
+            --output text)
+
+          if [ -z "$TASK_DEF_ARN" ] || [ "$TASK_DEF_ARN" = "None" ]; then
+            echo "Could not resolve task definition for ECS service: $ECS_SERVICE"
+            exit 1
+          fi
+
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query "taskDefinition" > task-definition.json
+
+      - name: Render new task definition with updated image
+        run: |
+          set -euo pipefail
+          jq --arg IMAGE "$IMAGE_URI" --arg CONTAINER "$ECS_CONTAINER_NAME" '
+            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+            | .containerDefinitions = (
+                .containerDefinitions
+                | map(if .name == $CONTAINER then .image = $IMAGE else . end)
+              )
+          ' task-definition.json > new-task-definition.json
+
+      - name: Register new task definition revision
+        id: register
+        run: |
+          set -euo pipefail
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-definition.json \
+            --query "taskDefinition.taskDefinitionArn" \
+            --output text)
+          echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy task definition to ECS service
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "${{ steps.register.outputs.new_task_def_arn }}"
+
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+
+      - name: Deployment summary
+        run: |
+          echo "Deployed image: $IMAGE_URI"
+          echo "Cluster: $ECS_CLUSTER"
+          echo "Service: $ECS_SERVICE"
