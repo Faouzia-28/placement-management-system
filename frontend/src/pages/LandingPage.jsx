@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
@@ -54,11 +54,6 @@ export default function LandingPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const selectedRoleLabel = useMemo(() => {
-    const role = ROLES.find((r) => r.key === selectedRole)
-    return role ? role.label : ''
-  }, [selectedRole])
-
   const anyModalOpen = showRoleModal || showLoginModal
 
   function openRoleModal() {
@@ -82,11 +77,6 @@ export default function LandingPage() {
     setLoading(true)
     try {
       const user = await login(email, password)
-      if (selectedRole && user.role !== selectedRole) {
-        alert(`Selected role is ${selectedRoleLabel}, but this account belongs to ${user.role}.`)
-        setLoading(false)
-        return
-      }
 
       if (user.role === 'STUDENT') nav('/student')
       else if (user.role === 'STAFF') nav('/staff')
