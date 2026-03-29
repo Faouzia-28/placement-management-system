@@ -1,4 +1,5 @@
 const attendanceService = require('../services/attendanceService');
+const notificationService = require('../services/notificationService');
 
 async function mark(req, res) {
   try {
@@ -69,6 +70,24 @@ async function publish(req, res) {
          total_absent = $4`,
       [drive_id, regCount, parseInt(stats.present_count) || 0, parseInt(stats.absent_count) || 0, drive.company_name, drive.job_title, drive.interview_date]
     );
+
+    const regStudents = await pool.query('SELECT student_id FROM drive_registrations WHERE drive_id = $1', [drive_id]);
+    const studentIds = regStudents.rows.map((r) => r.student_id);
+    await notificationService.createForUsers(studentIds, {
+      title: 'Attendance Published',
+      message: `Attendance has been published for ${drive.company_name} - ${drive.job_title}.`,
+      type: 'info',
+      entity_type: 'drive',
+      entity_id: parseInt(drive_id, 10)
+    });
+
+    await notificationService.createForRoles(['HEAD', 'COORDINATOR', 'STAFF'], {
+      title: 'Drive Completed',
+      message: `${drive.company_name} - ${drive.job_title} has been moved to finished drives.`,
+      type: 'success',
+      entity_type: 'drive',
+      entity_id: parseInt(drive_id, 10)
+    });
     
     res.json({ message: 'Attendance published' });
   } catch (e) {

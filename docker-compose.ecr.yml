@@ -1,0 +1,41 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ${ECR_REGISTRY}/${ECR_BACKEND_REPO}:${IMAGE_TAG:-latest}
+    env_file:
+      - ./backend/.env.production
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    command: npm start
+
+  worker:
+    image: ${ECR_REGISTRY}/${ECR_BACKEND_REPO}:${IMAGE_TAG:-latest}
+    env_file:
+      - ./backend/.env.production
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: npm run start:worker
+
+  scheduler:
+    image: ${ECR_REGISTRY}/${ECR_BACKEND_REPO}:${IMAGE_TAG:-latest}
+    env_file:
+      - ./backend/.env.production
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: npm run start:scheduler

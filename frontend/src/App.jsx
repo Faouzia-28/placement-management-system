@@ -2,7 +2,7 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
-import LoginPage from './pages/LoginPage'
+import LandingPage from './pages/LandingPage'
 
 // Role-based page imports
 import StudentDashboard from './pages/student/StudentDashboard'
@@ -30,7 +30,7 @@ function AppRoutes() {
   if (!user) {
     return (
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={<LandingPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     )

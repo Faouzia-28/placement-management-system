@@ -5,7 +5,8 @@ const ThemeContext = createContext();
 export function ThemeProvider({ children }){
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   useEffect(()=>{
-    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : '');
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+    document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('theme', theme);
   },[theme]);
 

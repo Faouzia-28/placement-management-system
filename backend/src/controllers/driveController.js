@@ -1,6 +1,7 @@
 const driveService = require('../services/driveService');
 const eligibilityService = require('../services/eligibilityService');
 const { jobQueue } = require('../../queue');
+const notificationService = require('../services/notificationService');
 
 async function createDrive(req, res) {
   try {
@@ -25,6 +26,15 @@ async function createDrive(req, res) {
     };
 
     const created = await driveService.createDrive(driveData);
+
+    // Notify coordinators that a new drive is ready for review/publishing.
+    await notificationService.createForRoles(['COORDINATOR'], {
+      title: 'New Drive Added',
+      message: `${company_name} - ${job_title} has been created and is ready for review.`,
+      type: 'info',
+      entity_type: 'drive',
+      entity_id: created.drive_id
+    });
 
     // Check if auto_calc is enabled — enqueue background job to handle eligibility & publishing
     const autoCalcRaw = req.body.auto_calc || req.body.autoCalc;
@@ -64,6 +74,14 @@ async function createDrive(req, res) {
       } catch (e) {
         console.error('Auto-publish mark-posted failed:', e.message, e);
       }
+
+      await notificationService.createForRoles(['STAFF', 'STUDENT'], {
+        title: 'New Drive Available',
+        message: `${company_name} - ${job_title} has been auto-published.`,
+        type: 'success',
+        entity_type: 'drive',
+        entity_id: created.drive_id
+      });
     }
 
     res.json(created);
@@ -164,6 +182,34 @@ async function publishDrive(req, res) {
       }
 
       await client.query('COMMIT');
+
+      await notificationService.createForRoles(['STAFF'], {
+        title: 'Drive Published',
+        message: `${rows[0].company_name} - ${rows[0].job_title} is now open for registrations.`,
+        type: 'success',
+        entity_type: 'drive',
+        entity_id: rows[0].drive_id
+      });
+
+      // Notify only the selected students for manual publish, otherwise notify all students.
+      if (selected_students && Array.isArray(selected_students) && selected_students.length > 0) {
+        await notificationService.createForUsers(selected_students, {
+          title: 'New Drive Available',
+          message: `${rows[0].company_name} - ${rows[0].job_title} is available for you to register.`,
+          type: 'success',
+          entity_type: 'drive',
+          entity_id: rows[0].drive_id
+        });
+      } else {
+        await notificationService.createForRoles(['STUDENT'], {
+          title: 'New Drive Available',
+          message: `${rows[0].company_name} - ${rows[0].job_title} has been published.`,
+          type: 'success',
+          entity_type: 'drive',
+          entity_id: rows[0].drive_id
+        });
+      }
+
       res.json(rows[0]);
     } catch (e) {
       await client.query('ROLLBACK');

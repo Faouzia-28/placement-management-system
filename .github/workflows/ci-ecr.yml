@@ -1,0 +1,61 @@
+name: Build and Push Backend Image to ECR
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - backend/**
+      - docker-compose.ecr.yml
+      - .github/workflows/ci-ecr.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+      ECR_BACKEND_REPO: ${{ secrets.ECR_BACKEND_REPO }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute image tags
+        id: vars
+        run: |
+          echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build backend image
+        run: |
+          docker build \
+            -t "$ECR_REGISTRY/$ECR_BACKEND_REPO:${{ steps.vars.outputs.sha_short }}" \
+            -t "$ECR_REGISTRY/$ECR_BACKEND_REPO:latest" \
+            ./backend
+
+      - name: Push backend image
+        run: |
+          docker push "$ECR_REGISTRY/$ECR_BACKEND_REPO:${{ steps.vars.outputs.sha_short }}"
+          docker push "$ECR_REGISTRY/$ECR_BACKEND_REPO:latest"
+
+      - name: Persist deployed image tag artifact
+        run: echo "${{ steps.vars.outputs.sha_short }}" > image-tag.txt
+
+      - name: Upload image tag artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-tag
+          path: image-tag.txt

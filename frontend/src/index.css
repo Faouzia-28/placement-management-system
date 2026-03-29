@@ -15,13 +15,13 @@
   --gradient-end: #1e40af;
   
   /* Theme variables */
-  --bg: #f8fafc;
-  --text: #1e293b;
+  --bg: #edf2f7;
+  --text: #0f172a;
   --card-bg: #ffffff;
-  --border: #e2e8f0;
+  --border: #dbe3ee;
 }
 
-[data-theme=""] {
+[data-theme="dark"] {
   --bg: #0f172a;
   --text: #f1f5f9;
   --card-bg: #1e293b;
@@ -39,8 +39,15 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--bg);
+  background:
+    radial-gradient(circle at 10% 10%, rgba(37, 99, 235, 0.08), transparent 35%),
+    radial-gradient(circle at 90% 20%, rgba(59, 130, 246, 0.07), transparent 30%),
+    linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
   color: var(--text);
+}
+
+[data-theme="dark"] body {
+  background: var(--bg);
 }
 
 /* Card styles */
@@ -48,12 +55,20 @@ body {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 10px 28px -16px rgba(15, 23, 42, 0.38), 0 2px 8px rgba(15, 23, 42, 0.06);
   transition: all 0.3s ease;
 }
 
 .card:hover {
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 20px 40px -20px rgba(15, 23, 42, 0.40), 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="dark"] .card {
+  box-shadow: 0 8px 24px -16px rgba(2, 6, 23, 0.65);
+}
+
+[data-theme="dark"] .card:hover {
+  box-shadow: 0 16px 32px -18px rgba(2, 6, 23, 0.75);
 }
 
 /* Custom scrollbar */
@@ -74,15 +89,15 @@ body {
   background: #94a3b8;
 }
 
-[data-theme=""] ::-webkit-scrollbar-track {
+[data-theme="dark"] ::-webkit-scrollbar-track {
   background: #334155;
 }
 
-[data-theme=""] ::-webkit-scrollbar-thumb {
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
   background: #64748b;
 }
 
-[data-theme=""] ::-webkit-scrollbar-thumb:hover {
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
@@ -129,7 +144,11 @@ body {
 
 .card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 20px 40px -20px rgba(15, 23, 42, 0.40), 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="dark"] .card-hover:hover {
+  box-shadow: 0 16px 32px -18px rgba(2, 6, 23, 0.75);
 }
 
 /* Button styles */
