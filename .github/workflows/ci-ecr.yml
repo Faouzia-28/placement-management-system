@@ -1,10 +1,12 @@
-name: Build and Deploy Backend to ECS
+name: Build and Deploy Backend to EC2 from ECR
 
 on:
   push:
     branches: [main]
     paths:
       - backend/**
+      - deploy/deploy-from-ecr.sh
+      - docker-compose.ecr.yml
       - .github/workflows/ci-ecr.yml
   workflow_dispatch:
 
@@ -15,7 +17,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     outputs:
-      image_uri: ${{ steps.vars.outputs.image_uri }}
+      sha_short: ${{ steps.vars.outputs.sha_short }}
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
@@ -39,7 +41,6 @@ jobs:
         id: vars
         run: |
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "image_uri=$ECR_REGISTRY/$ECR_BACKEND_REPO:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Build backend image
         run: |
@@ -53,18 +54,22 @@ jobs:
           docker push "$ECR_REGISTRY/$ECR_BACKEND_REPO:${{ steps.vars.outputs.sha_short }}"
           docker push "$ECR_REGISTRY/$ECR_BACKEND_REPO:latest"
 
-  deploy-to-ecs:
-    name: Deploy to ECS
+  deploy-to-ec2:
+    name: Deploy to EC2
     runs-on: ubuntu-latest
     needs: build-and-push
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
-      ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
-      ECS_SERVICE: ${{ secrets.ECS_SERVICE }}
-      ECS_CONTAINER_NAME: ${{ secrets.ECS_CONTAINER_NAME }}
-      IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+      ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+      ECR_BACKEND_REPO: ${{ secrets.ECR_BACKEND_REPO }}
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.sha_short }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -72,76 +77,93 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Validate ECS configuration
+      - name: Allow temporary SSH from runner
         run: |
           set -euo pipefail
-          if [ -z "$ECS_CLUSTER" ]; then
-            echo "Missing required secret: ECS_CLUSTER"
-            exit 1
-          fi
-          if [ -z "$ECS_SERVICE" ]; then
-            echo "Missing required secret: ECS_SERVICE"
-            exit 1
-          fi
-          if [ -z "$ECS_CONTAINER_NAME" ]; then
-            echo "Missing required secret: ECS_CONTAINER_NAME"
-            exit 1
-          fi
 
-      - name: Fetch current task definition
-        id: current
-        run: |
-          set -euo pipefail
-          TASK_DEF_ARN=$(aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE" \
-            --query "services[0].taskDefinition" \
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=ip-address,Values=$EC2_HOST" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
             --output text)
 
-          if [ -z "$TASK_DEF_ARN" ] || [ "$TASK_DEF_ARN" = "None" ]; then
-            echo "Could not resolve task definition for ECS service: $ECS_SERVICE"
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "Could not find a running EC2 instance for public IP: $EC2_HOST"
             exit 1
           fi
 
-          aws ecs describe-task-definition \
-            --task-definition "$TASK_DEF_ARN" \
-            --query "taskDefinition" > task-definition.json
-
-      - name: Render new task definition with updated image
-        run: |
-          set -euo pipefail
-          jq --arg IMAGE "$IMAGE_URI" --arg CONTAINER "$ECS_CONTAINER_NAME" '
-            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
-            | .containerDefinitions = (
-                .containerDefinitions
-                | map(if .name == $CONTAINER then .image = $IMAGE else . end)
-              )
-          ' task-definition.json > new-task-definition.json
-
-      - name: Register new task definition revision
-        id: register
-        run: |
-          set -euo pipefail
-          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://new-task-definition.json \
-            --query "taskDefinition.taskDefinitionArn" \
+          SG_ID=$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query "Reservations[0].Instances[0].SecurityGroups[0].GroupId" \
             --output text)
-          echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy task definition to ECS service
+          if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+            echo "Could not resolve Security Group for instance: $INSTANCE_ID"
+            exit 1
+          fi
+
+          RUNNER_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')
+          if [ -z "$RUNNER_IP" ]; then
+            echo "Could not determine GitHub runner public IP"
+            exit 1
+          fi
+
+          echo "INSTANCE_ID=$INSTANCE_ID" >> "$GITHUB_ENV"
+          echo "SG_ID=$SG_ID" >> "$GITHUB_ENV"
+          echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
+
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_IP/32,Description=github-actions-temporary-ssh}]" \
+            || true
+
+      - name: Setup SSH key
         run: |
-          set -euo pipefail
-          aws ecs update-service \
-            --cluster "$ECS_CLUSTER" \
-            --service "$ECS_SERVICE" \
-            --task-definition "${{ steps.register.outputs.new_task_def_arn }}"
+          mkdir -p ~/.ssh
+          if [ -z "${{ secrets.EC2_SSH_KEY }}" ]; then
+            echo "EC2_SSH_KEY secret is missing or empty"
+            exit 1
+          fi
+          if [ -z "$EC2_HOST" ]; then
+            echo "EC2_HOST secret is missing or empty"
+            exit 1
+          fi
+          # Normalize potential Windows CRLF from pasted PEM content.
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/ec2_key.pem
+          if [ ! -s ~/.ssh/ec2_key.pem ]; then
+            echo "Failed to write ~/.ssh/ec2_key.pem"
+            exit 1
+          fi
+          chmod 600 ~/.ssh/ec2_key.pem
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          aws ecs wait services-stable \
-            --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE"
-
-      - name: Deployment summary
+      - name: Sync deployment files to EC2
         run: |
-          echo "Deployed image: $IMAGE_URI"
-          echo "Cluster: $ECS_CLUSTER"
-          echo "Service: $ECS_SERVICE"
+          rsync -avz -e "ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            docker-compose.ecr.yml \
+            deploy/deploy-from-ecr.sh \
+            "$EC2_USER@$EC2_HOST:~/placement-management-system/"
+
+      - name: Deploy on EC2
+        run: |
+          ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$EC2_USER@$EC2_HOST" << 'EOF'
+            set -euo pipefail
+            cd ~/placement-management-system
+            chmod +x deploy-from-ecr.sh
+            AWS_REGION='${{ env.AWS_REGION }}' \
+            ECR_REGISTRY='${{ env.ECR_REGISTRY }}' \
+            ECR_BACKEND_REPO='${{ env.ECR_BACKEND_REPO }}' \
+            IMAGE_TAG='${{ env.IMAGE_TAG }}' \
+            ./deploy-from-ecr.sh
+          EOF
+
+      - name: Revoke temporary SSH from runner
+        if: always()
+        run: |
+          set +e
+          if [ -n "${SG_ID:-}" ] && [ -n "${RUNNER_IP:-}" ]; then
+            aws ec2 revoke-security-group-ingress \
+              --group-id "$SG_ID" \
+              --protocol tcp \
+              --port 22 \
+              --cidr "$RUNNER_IP/32"
+          fi
