@@ -25,6 +25,52 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Allow temporary SSH from runner
+        run: |
+          set -euo pipefail
+
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=ip-address,Values=$EC2_HOST" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "Could not find a running EC2 instance for public IP: $EC2_HOST"
+            exit 1
+          fi
+
+          SG_ID=$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query "Reservations[0].Instances[0].SecurityGroups[0].GroupId" \
+            --output text)
+
+          if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+            echo "Could not resolve Security Group for instance: $INSTANCE_ID"
+            exit 1
+          fi
+
+          RUNNER_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')
+          if [ -z "$RUNNER_IP" ]; then
+            echo "Could not determine GitHub runner public IP"
+            exit 1
+          fi
+
+          echo "INSTANCE_ID=$INSTANCE_ID" >> "$GITHUB_ENV"
+          echo "SG_ID=$SG_ID" >> "$GITHUB_ENV"
+          echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
+
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_IP/32,Description=github-actions-temporary-ssh}]" \
+            || true
+
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
@@ -64,3 +110,15 @@ jobs:
             IMAGE_TAG='${{ github.event.inputs.image_tag }}' \
             ./deploy-from-ecr.sh
           EOF
+
+      - name: Revoke temporary SSH from runner
+        if: always()
+        run: |
+          set +e
+          if [ -n "${SG_ID:-}" ] && [ -n "${RUNNER_IP:-}" ]; then
+            aws ec2 revoke-security-group-ingress \
+              --group-id "$SG_ID" \
+              --protocol tcp \
+              --port 22 \
+              --cidr "$RUNNER_IP/32"
+          fi
