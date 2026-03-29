@@ -16,6 +16,8 @@ const analyticsRoutes = require('./routes/analytics');
 const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
+
+// CI/CD Pipeline v1.0 - First automated deployment with ECR integration
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
 	.split(',')
 	.map(origin => origin.trim())
