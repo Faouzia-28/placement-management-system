@@ -17,6 +17,7 @@ services:
       redis:
         condition: service_healthy
     ports:
+      - "80:5000"
       - "5000:5000"
     command: npm start
 
