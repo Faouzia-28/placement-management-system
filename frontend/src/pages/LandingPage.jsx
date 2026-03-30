@@ -54,6 +54,8 @@ export default function LandingPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const selectedRoleLabel = ROLES.find((role) => role.key === selectedRole)?.label || ''
+
   const anyModalOpen = showRoleModal || showLoginModal
 
   function openRoleModal() {
