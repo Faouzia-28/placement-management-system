@@ -3,17 +3,38 @@ import api from '../services/api'
 
 const AuthContext = createContext();
 
-export function AuthProvider({ children }){
+function readStoredUser() {
   const token = localStorage.getItem('token');
-  const user = token ? JSON.parse(localStorage.getItem('user')) : null;
-  const [stateUser, setUser] = useState(user);
+  if (!token) return null;
+
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.role !== 'string') {
+      return null;
+    }
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function AuthProvider({ children }){
+  const [stateUser, setUser] = useState(readStoredUser());
 
   async function login(email, password){
     const res = await api.post('/auth/login', { email, password });
+    const payloadUser = res.data.user || res.data.u || null;
     localStorage.setItem('token', res.data.token);
-    localStorage.setItem('user', JSON.stringify(res.data.user));
-    setUser(res.data.user);
-    return res.data.user;
+    if (payloadUser) {
+      localStorage.setItem('user', JSON.stringify(payloadUser));
+      setUser(payloadUser);
+    } else {
+      localStorage.removeItem('user');
+      setUser(null);
+    }
+    return payloadUser;
   }
 
   function logout(){

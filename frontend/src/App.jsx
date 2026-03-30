@@ -26,8 +26,9 @@ function ProtectedRoute({ children, allowedRoles }) {
 
 function AppRoutes() {
   const { user } = useAuth()
+  const safeRole = typeof user?.role === 'string' ? user.role.toLowerCase() : null
   
-  if (!user) {
+  if (!user || !safeRole) {
     return (
       <Routes>
         <Route path="/login" element={<LandingPage />} />
@@ -38,7 +39,7 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={<Navigate to={`/${user.role.toLowerCase()}`} replace />} />
+      <Route path="/login" element={<Navigate to={`/${safeRole}`} replace />} />
       
       {/* Student Routes */}
       <Route 
@@ -83,11 +84,11 @@ function AppRoutes() {
       {/* Default redirect based on role */}
       <Route 
         path="/" 
-        element={<Navigate to={`/${user.role.toLowerCase()}`} replace />} 
+        element={<Navigate to={`/${safeRole}`} replace />} 
       />
       
       {/* Catch all */}
-      <Route path="*" element={<Navigate to={`/${user.role.toLowerCase()}`} replace />} />
+      <Route path="*" element={<Navigate to={`/${safeRole}`} replace />} />
     </Routes>
   )
 }
