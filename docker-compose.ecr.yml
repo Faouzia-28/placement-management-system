@@ -17,9 +17,19 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "80:5000"
       - "5000:5000"
     command: npm start
+
+  haproxy:
+    image: haproxy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    command: haproxy -f /usr/local/etc/haproxy/haproxy.cfg
 
   worker:
     image: ${ECR_REGISTRY}/${ECR_BACKEND_REPO}:${IMAGE_TAG:-latest}
