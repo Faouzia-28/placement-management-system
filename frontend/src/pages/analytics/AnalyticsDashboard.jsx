@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
+
+const PIE_COLORS = ['#60a5fa', '#34d399', '#f59e0b', '#a78bfa', '#f472b6', '#22d3ee', '#f87171', '#84cc16', '#f97316', '#2dd4bf'];
 
 export default function AnalyticsDashboard({ role, drives }){
   const { theme } = useTheme();
@@ -130,13 +132,25 @@ export default function AnalyticsDashboard({ role, drives }){
         <div className="text-sm text-gray-600 dark:text-gray-300 mb-2">Top Drives by Registrations</div>
         <div style={{ width: '100%', height: 260 }}>
           <ResponsiveContainer>
-            <BarChart data={registrations} layout="vertical">
-              <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
-              <XAxis type="number" tick={{ fill: axisStroke, fontSize: 12 }} />
-              <YAxis type="category" dataKey="company_name" width={150} tick={{ fill: axisStroke, fontSize: 12 }} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Bar dataKey="registrations" fill="#60a5fa" />
-            </BarChart>
+            <PieChart>
+              <Pie
+                data={registrations}
+                dataKey="registrations"
+                nameKey="company_name"
+                cx="50%"
+                cy="50%"
+                outerRadius={88}
+                innerRadius={32}
+                paddingAngle={2}
+                label={({ company_name, percent }) => `${company_name} ${(percent * 100).toFixed(0)}%`}
+              >
+                {registrations.map((entry, index) => (
+                  <Cell key={`cell-${entry.drive_id || index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${value}`, 'Registrations']} />
+              <Legend wrapperStyle={{ fontSize: '12px' }} />
+            </PieChart>
           </ResponsiveContainer>
         </div>
 

@@ -40,6 +40,11 @@ async function publish(req, res) {
       return res.status(404).json({ message: 'Drive not found' });
     }
     const drive = driveRes.rows[0];
+
+    const lockRes = await pool.query('SELECT attendance_published FROM placement_drives WHERE drive_id = $1', [drive_id]);
+    if (lockRes.rows.length && lockRes.rows[0].attendance_published) {
+      return res.status(400).json({ message: 'Attendance already published' });
+    }
     
     // Get attendance counts
     const attendanceRes = await pool.query(
@@ -51,6 +56,11 @@ async function publish(req, res) {
       [drive_id]
     );
     const stats = attendanceRes.rows[0];
+    const totalMarked = parseInt(stats.total_count, 10) || 0;
+
+    if (totalMarked === 0) {
+      return res.status(400).json({ message: 'Mark attendance for at least one student before publishing.' });
+    }
     
     // Get total registrations
     const regRes = await pool.query('SELECT COUNT(*) as reg_count FROM drive_registrations WHERE drive_id = $1', [drive_id]);
