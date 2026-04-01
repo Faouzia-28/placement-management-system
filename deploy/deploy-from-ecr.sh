@@ -16,7 +16,7 @@ ECR_REGISTRY="${ECR_REGISTRY}" ECR_BACKEND_REPO="${ECR_BACKEND_REPO}" IMAGE_TAG=
   docker compose -f docker-compose.ecr.yml pull backend worker scheduler
 
 ECR_REGISTRY="${ECR_REGISTRY}" ECR_BACKEND_REPO="${ECR_BACKEND_REPO}" IMAGE_TAG="${IMAGE_TAG}" \
-  docker compose -f docker-compose.ecr.yml up -d redis backend worker scheduler
+  docker compose -f docker-compose.ecr.yml up -d --force-recreate redis backend worker scheduler haproxy
 
 docker compose -f docker-compose.ecr.yml ps
 
