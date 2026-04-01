@@ -4,7 +4,6 @@ BEGIN;
 -- Drop the table if it exists and recreate with correct structure
 DROP TABLE IF EXISTS finished_drives;
 
--- Recreate the finished_drives table with the correct structure
 CREATE TABLE finished_drives (
   id SERIAL PRIMARY KEY,
   drive_id INTEGER NOT NULL REFERENCES placement_drives(drive_id) ON DELETE CASCADE,
