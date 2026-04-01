@@ -3,72 +3,37 @@ import api from '../../services/api';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
 
-// Enhanced modern color palette with vibrant, high-contrast colors
+// Modern dashboard palette focused on cyan, blue, teal, and purple.
 const PIE_COLORS = [
-  '#3b82f6', // Vibrant Blue
-  '#10b981', // Emerald Green
-  '#a855f7', // Purple
-  '#f97316', // Orange
-  '#06b6d4', // Cyan
-  '#ec4899', // Pink
-  '#6366f1', // Indigo
-  '#14b8a6', // Teal
-  '#f59e0b', // Amber
-  '#8b5cf6'  // Violet
+  '#22d3ee',
+  '#3b82f6',
+  '#14b8a6',
+  '#8b5cf6'
 ];
 
-// Custom tooltip component with glassmorphism style
+// Clean, minimal tooltip for donut slices.
 const CustomPieTooltip = ({ active, payload, isDark }) => {
   if (active && payload && payload[0]) {
     const { value, payload: data } = payload[0];
-    const percent = data.percent ? (data.percent * 100).toFixed(1) : 'N/A';
+    const percent = typeof data.percent === 'number' ? `${(data.percent * 100).toFixed(1)}%` : null;
     return (
       <div 
-        className="px-3 py-2 rounded-lg backdrop-blur-md bg-opacity-90 border border-white border-opacity-20 shadow-2xl"
+        className="px-3 py-2 rounded-lg border shadow-xl"
         style={{
-          backgroundColor: isDark ? 'rgba(17, 24, 39, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-          boxShadow: isDark 
-            ? '0 8px 32px 0 rgba(31, 38, 135, 0.37)' 
-            : '0 8px 32px 0 rgba(31, 38, 135, 0.12)',
+          backgroundColor: isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.96)',
+          borderColor: isDark ? '#1e293b' : '#e2e8f0',
+          boxShadow: isDark ? '0 10px 30px rgba(2, 6, 23, 0.45)' : '0 10px 30px rgba(15, 23, 42, 0.14)',
         }}
       >
-        <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+        <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
           {data.company_name}
         </p>
-        <p className={`text-xs font-medium ${isDark ? 'text-blue-300' : 'text-blue-600'}`}>
-          {value} registrations
-        </p>
-        <p className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-          {percent}%
-        </p>
+        <p className={`text-xs font-medium ${isDark ? 'text-cyan-300' : 'text-cyan-700'}`}>{value} registrations</p>
+        {percent && <p className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{percent}</p>}
       </div>
     );
   }
   return null;
-};
-
-// Custom label renderer with connector lines and better positioning
-const renderCustomLabel = (entry, isDark, index, total) => {
-  const { cx, cy, midAngle, innerRadius, outerRadius, percent, company_name } = entry;
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.7;
-  const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
-  const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
-  
-  // Only show label if segment is >= 5% to avoid crowding
-  if (percent < 0.05) return null;
-
-  return (
-    <text
-      x={x}
-      y={y}
-      fill={isDark ? '#f8fafc' : '#0f172a'}
-      className="text-xs font-semibold"
-      textAnchor={x > cx ? 'start' : 'end'}
-      dominantBaseline="central"
-    >
-      {(percent * 100).toFixed(0)}%
-    </text>
-  );
 };
 
 export default function AnalyticsDashboard({ role, drives }){
@@ -195,58 +160,26 @@ export default function AnalyticsDashboard({ role, drives }){
         </div>
       </div>
 
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
-        <div className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-4">Top Drives by Registrations</div>
-        <div style={{ width: '100%', height: 320 }}>
+      <div className="p-6 rounded-2xl border border-slate-700/70 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 shadow-[0_18px_40px_rgba(2,6,23,0.45)] overflow-hidden">
+        <div className="text-sm font-semibold text-slate-200 mb-4 tracking-wide">Top Drives by Registrations</div>
+        <div className="w-full h-[360px] flex items-center justify-center">
           <ResponsiveContainer>
-            <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+            <PieChart margin={{ top: 14, right: 14, bottom: 14, left: 14 }}>
               <defs>
-                {/* SVG gradients for enhanced visual depth */}
-                <linearGradient id="grad-0" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[0]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[0]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[1]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[1]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-2" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[2]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[2]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-3" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[3]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[3]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-4" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[4]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[4]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-5" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[5]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[5]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-6" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[6]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[6]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-7" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[7]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[7]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-8" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[8]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[8]} stopOpacity={0.7} />
-                </linearGradient>
-                <linearGradient id="grad-9" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={PIE_COLORS[9]} stopOpacity={1} />
-                  <stop offset="100%" stopColor={PIE_COLORS[9]} stopOpacity={0.7} />
-                </linearGradient>
-                {/* Filter for glow effect */}
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                {registrations.map((entry, index) => {
+                  const start = PIE_COLORS[index % PIE_COLORS.length];
+                  const end = PIE_COLORS[(index + 1) % PIE_COLORS.length];
+                  return (
+                    <linearGradient key={`grad-${entry.drive_id || index}`} id={`grad-${entry.drive_id || index}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor={start} stopOpacity={1} />
+                      <stop offset="100%" stopColor={end} stopOpacity={0.82} />
+                    </linearGradient>
+                  );
+                })}
+                <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="10" result="blur" />
                   <feMerge>
-                    <feMergeNode in="coloredBlur" />
+                    <feMergeNode in="blur" />
                     <feMergeNode in="SourceGraphic" />
                   </feMerge>
                 </filter>
@@ -257,66 +190,52 @@ export default function AnalyticsDashboard({ role, drives }){
                 nameKey="company_name"
                 cx="50%"
                 cy="50%"
-                outerRadius={88}
-                innerRadius={40}
-                paddingAngle={4}
+                outerRadius={128}
+                innerRadius={72}
+                paddingAngle={0}
                 animationBegin={0}
-                animationDuration={800}
-                animationEasing="ease-out"
+                animationDuration={700}
+                animationEasing="ease-in-out"
                 onMouseEnter={(_, index) => setActiveSlice(index)}
                 onMouseLeave={() => setActiveSlice(null)}
-                label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, company_name }, index) => {
-                  if (percent < 0.05) return null;
-                  const radius = innerRadius + (outerRadius - innerRadius) * 0.7;
-                  const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
-                  const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
-                  return (
-                    <text
-                      x={x}
-                      y={y}
-                      fill={theme === 'dark' ? '#f8fafc' : '#0f172a'}
-                      className="text-xs font-bold"
-                      textAnchor={x > cx ? 'start' : 'end'}
-                      dominantBaseline="central"
-                    >
-                      {(percent * 100).toFixed(0)}%
-                    </text>
-                  );
-                }}
+                label={false}
+                labelLine={false}
+                stroke="none"
+                style={{ filter: 'drop-shadow(0 16px 26px rgba(34, 211, 238, 0.22))' }}
               >
                 {registrations.map((entry, index) => (
                   <Cell
                     key={`cell-${entry.drive_id || index}`}
-                    fill={`url(#grad-${index % 10})`}
-                    opacity={activeSlice === null || activeSlice === index ? 1 : 0.6}
+                    fill={`url(#grad-${entry.drive_id || index})`}
+                    stroke="none"
+                    opacity={activeSlice === null || activeSlice === index ? 1 : 0.58}
                     style={{
-                      filter: activeSlice === index ? 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.3))' : 'none',
-                      transition: 'opacity 200ms ease-out, filter 200ms ease-out',
+                      filter: activeSlice === index ? 'drop-shadow(0 0 18px rgba(59, 130, 246, 0.45))' : 'url(#softGlow)',
+                      transition: 'opacity 260ms ease, filter 260ms ease',
                       cursor: 'pointer',
-                      transform: activeSlice === index ? 'scale(1.02)' : 'scale(1)',
-                      transformOrigin: `${entry.cx}px ${entry.cy}px`,
                     }}
                   />
                 ))}
               </Pie>
               <Tooltip 
                 content={<CustomPieTooltip isDark={theme === 'dark'} />}
-                cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
+                cursor={false}
               />
               <Legend 
+                iconType="circle"
                 wrapperStyle={{
-                  paddingTop: '20px',
+                  paddingTop: '14px',
                   display: 'flex',
                   justifyContent: 'center',
                   flexWrap: 'wrap',
-                  gap: '16px'
+                  gap: '12px'
                 }}
                 formatter={(value) => (
                   <span style={{
-                    fontSize: '12px',
+                    fontSize: '13px',
                     fontWeight: '500',
-                    color: theme === 'dark' ? '#d1d5db' : '#374151',
-                    letterSpacing: '0.3px'
+                    color: '#cbd5e1',
+                    letterSpacing: '0.2px'
                   }}>
                     {value}
                   </span>

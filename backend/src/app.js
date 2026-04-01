@@ -24,7 +24,27 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
 	.filter(Boolean);
 
 app.use(cors(allowedOrigins.length ? { origin: allowedOrigins } : undefined));
-app.use(express.json());
+
+// Configure body parser with explicit settings to handle HAProxy
+app.use(express.json({ 
+  limit: '50mb',
+  strict: false
+}));
+app.use(express.urlencoded({ 
+  limit: '50mb',
+  extended: true 
+}));
+
+// Debug middleware to log request bodies
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path.includes('/auth')) {
+    console.log(`[MIDDLEWARE] ${req.method} ${req.path}`);
+    console.log(`[MIDDLEWARE] Content-Type: ${req.get('content-type')}`);
+    console.log(`[MIDDLEWARE] Content-Length: ${req.get('content-length')}`);
+    console.log(`[MIDDLEWARE] req.body:`, JSON.stringify(req.body).substring(0, 200));
+  }
+  next();
+});
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

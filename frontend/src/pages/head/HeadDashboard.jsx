@@ -98,7 +98,7 @@ export default function HeadDashboard(){
       const formData = new FormData();
       formData.append('company_name', form.company_name);
       formData.append('job_title', form.job_title);
-      formData.append('domain_id', form.domain_id || 1);
+      formData.append('domain_id', form.domain_id || domains[0]?.domain_id || '');
       formData.append('job_description', form.job_description || '');
       formData.append('interview_date', form.interview_date || '');
       formData.append('min_cgpa', parseFloat(form.min_cgpa) || 0);
@@ -111,11 +111,9 @@ export default function HeadDashboard(){
         formData.append('pdf', form.pdf);
       }
       
-      await api.post('/drives', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await api.post('/drives', formData);
       console.info('Drive posted successfully.');
-      setForm({ company_name:'', job_title:'', domain_id:1, job_description:'', interview_date:'', min_cgpa:6, min_10th:60, min_12th:60, max_backlogs:0, pdf:null });
+      setForm({ company_name:'', job_title:'', domain_id: domains[0]?.domain_id || '', job_description:'', interview_date:'', min_cgpa:6, min_10th:60, min_12th:60, max_backlogs:0, pdf:null });
       setPdfName('');
       fetchDrives();
     }catch(e){ 
@@ -126,20 +124,21 @@ export default function HeadDashboard(){
     }
   }
 
-  async function deleteDrive(){
-    if(selectedDrivesToDelete.size === 0){
+  async function deleteDrive(driveId){
+    const targetIds = driveId ? [driveId] : Array.from(selectedDrivesToDelete);
+    if(targetIds.length === 0){
       alert('Please select at least one drive to delete');
       return;
     }
-    if(!window.confirm(`Are you sure you want to delete ${selectedDrivesToDelete.size} drive(s)?`)){
+    if(!window.confirm(`Are you sure you want to delete ${targetIds.length} drive(s)?`)){
       return;
     }
     setDeleteLoading(true);
     try{
-      for(const driveId of selectedDrivesToDelete){
-        await api.delete(`/drives/${driveId}`);
+      for(const id of targetIds){
+        await api.delete(`/drives/${id}`);
       }
-      console.info(`${selectedDrivesToDelete.size} drive(s) deleted successfully.`);
+      console.info(`${targetIds.length} drive(s) deleted successfully.`);
       setSelectedDrivesToDelete(new Set());
       fetchDrives();
     }catch(e){
