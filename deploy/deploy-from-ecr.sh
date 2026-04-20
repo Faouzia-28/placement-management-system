@@ -8,16 +8,25 @@ fi
 
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
+if command -v docker-compose >/dev/null 2>&1; then
+  compose_cmd=(docker-compose)
+elif docker compose version >/dev/null 2>&1; then
+  compose_cmd=(docker compose)
+else
+  echo "Neither docker-compose nor docker compose is available on this host."
+  exit 1
+fi
+
 echo "Logging into ECR ${ECR_REGISTRY}..."
 aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
 echo "Deploying image tag ${IMAGE_TAG}..."
 ECR_REGISTRY="${ECR_REGISTRY}" ECR_BACKEND_REPO="${ECR_BACKEND_REPO}" IMAGE_TAG="${IMAGE_TAG}" \
-  docker compose -f docker-compose.ecr.yml pull backend worker scheduler
+  "${compose_cmd[@]}" -f docker-compose.ecr.yml pull backend worker scheduler
 
 ECR_REGISTRY="${ECR_REGISTRY}" ECR_BACKEND_REPO="${ECR_BACKEND_REPO}" IMAGE_TAG="${IMAGE_TAG}" \
-  docker compose -f docker-compose.ecr.yml up -d --force-recreate redis backend worker scheduler haproxy
+  "${compose_cmd[@]}" -f docker-compose.ecr.yml up -d --force-recreate redis backend worker scheduler haproxy
 
-docker compose -f docker-compose.ecr.yml ps
+"${compose_cmd[@]}" -f docker-compose.ecr.yml ps
 
 echo "Deployment completed successfully."
