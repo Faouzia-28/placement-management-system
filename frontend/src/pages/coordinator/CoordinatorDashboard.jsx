@@ -172,7 +172,8 @@ export default function CoordinatorDashboard(){
       await loadAttendance();
     } catch (e) {
       console.error('Error marking attendance:', e);
-      alert('Error marking attendance: ' + (e.response?.data?.message || e.message));
+      const serverMsg = [e.response?.data?.message, e.response?.data?.detail].filter(Boolean).join(' - ');
+      alert('Error marking attendance: ' + (serverMsg || e.message));
     }
   }
 

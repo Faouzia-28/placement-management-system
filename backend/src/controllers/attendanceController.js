@@ -1,6 +1,38 @@
 const attendanceService = require('../services/attendanceService');
 const notificationService = require('../services/notificationService');
 
+async function hasAttendancePublishedColumn(pool) {
+  const q = `
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'placement_drives'
+      AND column_name = 'attendance_published'
+    LIMIT 1
+  `;
+  const result = await pool.query(q);
+  return result.rows.length > 0;
+}
+
+async function getAttendanceLock(pool, drive_id) {
+  const driveRes = await pool.query('SELECT drive_id FROM placement_drives WHERE drive_id = $1', [drive_id]);
+  if (!driveRes.rows.length) {
+    return { exists: false, locked: false, hasColumn: false };
+  }
+
+  const hasColumn = await hasAttendancePublishedColumn(pool);
+  if (!hasColumn) {
+    return { exists: true, locked: false, hasColumn: false };
+  }
+
+  const lockRes = await pool.query('SELECT attendance_published FROM placement_drives WHERE drive_id = $1', [drive_id]);
+  return {
+    exists: true,
+    locked: !!(lockRes.rows.length && lockRes.rows[0].attendance_published),
+    hasColumn: true
+  };
+}
+
 async function mark(req, res) {
   try {
     const drive_id = parseInt(req.params.id, 10);
@@ -20,15 +52,20 @@ async function mark(req, res) {
     }
 
     const pool = require('../db/pool');
-    const lockRes = await pool.query('SELECT attendance_published FROM placement_drives WHERE drive_id = $1', [drive_id]);
-    if (lockRes.rows.length && lockRes.rows[0].attendance_published) {
+    const lockState = await getAttendanceLock(pool, drive_id);
+    if (!lockState.exists) {
+      return res.status(404).json({ message: 'Drive not found' });
+    }
+
+    if (lockState.locked) {
       return res.status(400).json({ message: 'Attendance already published' });
     }
+
     const row = await attendanceService.markAttendance(drive_id, Number(student_id), normalizedStatus);
     res.json(row);
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: 'Error marking attendance' });
+    res.status(500).json({ message: 'Error marking attendance', detail: e.message });
   }
 }
 
@@ -45,9 +82,13 @@ async function list(req, res) {
 
 async function publish(req, res) {
   try {
-    const drive_id = req.params.id;
+    const drive_id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(drive_id) || drive_id <= 0) {
+      return res.status(400).json({ message: 'Invalid drive id' });
+    }
+
     const pool = require('../db/pool');
-    
+
     // Get drive details
     const driveRes = await pool.query('SELECT company_name, job_title, interview_date FROM placement_drives WHERE drive_id = $1', [drive_id]);
     if (!driveRes.rows.length) {
@@ -55,8 +96,8 @@ async function publish(req, res) {
     }
     const drive = driveRes.rows[0];
 
-    const lockRes = await pool.query('SELECT attendance_published FROM placement_drives WHERE drive_id = $1', [drive_id]);
-    if (lockRes.rows.length && lockRes.rows[0].attendance_published) {
+    const lockState = await getAttendanceLock(pool, drive_id);
+    if (lockState.locked) {
       return res.status(400).json({ message: 'Attendance already published' });
     }
     
@@ -80,8 +121,10 @@ async function publish(req, res) {
     const regRes = await pool.query('SELECT COUNT(*) as reg_count FROM drive_registrations WHERE drive_id = $1', [drive_id]);
     const regCount = parseInt(regRes.rows[0].reg_count) || 0;
     
-    // Update placement_drives
-    await pool.query('UPDATE placement_drives SET attendance_published = true WHERE drive_id = $1', [drive_id]);
+    // Update placement_drives only when column exists in this environment.
+    if (lockState.hasColumn) {
+      await pool.query('UPDATE placement_drives SET attendance_published = true WHERE drive_id = $1', [drive_id]);
+    }
     
     // Insert into finished_drives
     await pool.query(
