@@ -25,7 +25,7 @@ ECR_REGISTRY="${ECR_REGISTRY}" ECR_BACKEND_REPO="${ECR_BACKEND_REPO}" IMAGE_TAG=
   "${compose_cmd[@]}" -f docker-compose.ecr.yml pull backend worker scheduler
 
 ECR_REGISTRY="${ECR_REGISTRY}" ECR_BACKEND_REPO="${ECR_BACKEND_REPO}" IMAGE_TAG="${IMAGE_TAG}" \
-  "${compose_cmd[@]}" -f docker-compose.ecr.yml up -d --force-recreate redis backend worker scheduler haproxy
+  "${compose_cmd[@]}" -f docker-compose.ecr.yml up -d --force-recreate postgres redis backend worker scheduler
 
 "${compose_cmd[@]}" -f docker-compose.ecr.yml ps
 

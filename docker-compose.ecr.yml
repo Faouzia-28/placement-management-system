@@ -1,4 +1,19 @@
 services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: placeops
+      POSTGRES_PASSWORD: placeops_pass
+      POSTGRES_DB: placeops_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U placeops -d placeops_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -14,22 +29,13 @@ services:
       - ./backend/.env.production
     restart: unless-stopped
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     ports:
       - "5000:5000"
     command: npm start
-
-  haproxy:
-    image: haproxy:2.8-alpine
-    restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "80:80"
-    volumes:
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    command: haproxy -f /usr/local/etc/haproxy/haproxy.cfg
 
   worker:
     image: ${ECR_REGISTRY}/${ECR_BACKEND_REPO}:${IMAGE_TAG:-latest}
@@ -50,3 +56,6 @@ services:
       redis:
         condition: service_healthy
     command: npm run start:scheduler
+
+volumes:
+  postgres_data:
