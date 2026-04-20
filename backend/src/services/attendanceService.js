@@ -1,9 +1,24 @@
 const pool = require('../db/pool');
 
 async function markAttendance(drive_id, student_id, status) {
-  const q = `INSERT INTO attendance (drive_id, student_id, status) VALUES ($1,$2,$3) ON CONFLICT (drive_id, student_id) DO UPDATE SET status = EXCLUDED.status RETURNING *`;
-  const { rows } = await pool.query(q, [drive_id, student_id, status]);
-  return rows[0];
+  const updateQ = `
+    UPDATE attendance
+    SET status = $3
+    WHERE drive_id = $1 AND student_id = $2
+    RETURNING *
+  `;
+  const updated = await pool.query(updateQ, [drive_id, student_id, status]);
+  if (updated.rows.length) {
+    return updated.rows[0];
+  }
+
+  const insertQ = `
+    INSERT INTO attendance (drive_id, student_id, status)
+    VALUES ($1, $2, $3)
+    RETURNING *
+  `;
+  const inserted = await pool.query(insertQ, [drive_id, student_id, status]);
+  return inserted.rows[0];
 }
 
 async function listAttendance(drive_id) {

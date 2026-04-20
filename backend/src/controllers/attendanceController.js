@@ -3,14 +3,28 @@ const notificationService = require('../services/notificationService');
 
 async function mark(req, res) {
   try {
-    const drive_id = req.params.id;
+    const drive_id = parseInt(req.params.id, 10);
     const { student_id, status } = req.body;
+    const normalizedStatus = typeof status === 'string' ? status.toUpperCase() : '';
+
+    if (!Number.isInteger(drive_id) || drive_id <= 0) {
+      return res.status(400).json({ message: 'Invalid drive id' });
+    }
+
+    if (!Number.isInteger(Number(student_id)) || Number(student_id) <= 0) {
+      return res.status(400).json({ message: 'Invalid student id' });
+    }
+
+    if (!['PRESENT', 'ABSENT'].includes(normalizedStatus)) {
+      return res.status(400).json({ message: 'Invalid attendance status' });
+    }
+
     const pool = require('../db/pool');
     const lockRes = await pool.query('SELECT attendance_published FROM placement_drives WHERE drive_id = $1', [drive_id]);
     if (lockRes.rows.length && lockRes.rows[0].attendance_published) {
       return res.status(400).json({ message: 'Attendance already published' });
     }
-    const row = await attendanceService.markAttendance(drive_id, student_id, status);
+    const row = await attendanceService.markAttendance(drive_id, Number(student_id), normalizedStatus);
     res.json(row);
   } catch (e) {
     console.error(e);
