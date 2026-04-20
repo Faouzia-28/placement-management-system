@@ -39,7 +39,7 @@ jobs:
           set -euo pipefail
           cd frontend
           npm ci
-          echo "VITE_API_URL=http://13.228.31.66:5000/api" > .env.production
+          echo "VITE_API_URL=/api" > .env.production
           npm run build
 
       - name: Configure AWS credentials
