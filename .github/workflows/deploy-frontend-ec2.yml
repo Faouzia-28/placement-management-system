@@ -107,7 +107,6 @@ jobs:
 
           rsync -avz -e "ssh -i ~/.ssh/frontend_ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
             docker-compose.frontend.yml \
-            deploy/deploy-frontend.sh \
             deploy/nginx.frontend.conf \
             "$FRONTEND_EC2_USER@$FRONTEND_EC2_HOST:~/placement-management-system/"
 
@@ -116,8 +115,20 @@ jobs:
           ssh -i ~/.ssh/frontend_ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$FRONTEND_EC2_USER@$FRONTEND_EC2_HOST" << 'EOF'
             set -euo pipefail
             cd ~/placement-management-system
-            chmod +x deploy/deploy-frontend.sh
-            ./deploy/deploy-frontend.sh
+
+            if command -v docker-compose >/dev/null 2>&1; then
+              compose_cmd=(docker-compose)
+            elif docker compose version >/dev/null 2>&1; then
+              compose_cmd=(docker compose)
+            else
+              echo "Neither docker-compose nor docker compose is available on this host."
+              exit 1
+            fi
+
+            echo "Deploying frontend container with docker-compose.frontend.yml..."
+            "${compose_cmd[@]}" -f docker-compose.frontend.yml up -d --force-recreate frontend
+            "${compose_cmd[@]}" -f docker-compose.frontend.yml ps
+            echo "Frontend deployment completed successfully."
           EOF
 
       - name: Revoke temporary SSH from runner
