@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: placeops
+      POSTGRES_PASSWORD: placeops_pass
+      POSTGRES_DB: placeops_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/sql/create_tables.sql:/docker-entrypoint-initdb.d/01_create_tables.sql:ro
+      - ./backend/sql/add_auto_published_flag.sql:/docker-entrypoint-initdb.d/02_add_auto_published_flag.sql:ro
+      - ./backend/sql/add_drive_selections.sql:/docker-entrypoint-initdb.d/03_add_drive_selections.sql:ro
+      - ./backend/sql/add_pdf_column.sql:/docker-entrypoint-initdb.d/04_add_pdf_column.sql:ro
+      - ./backend/sql/add_status_column.sql:/docker-entrypoint-initdb.d/05_add_status_column.sql:ro
+      - ./backend/sql/materialized_views.sql:/docker-entrypoint-initdb.d/06_materialized_views.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U placeops -d placeops_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env.production
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    command: npm start
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env.production
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run start:worker
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env.production
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run start:scheduler
+
+volumes:
+  postgres_data:

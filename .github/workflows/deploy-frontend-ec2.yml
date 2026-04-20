@@ -1,0 +1,133 @@
+name: Build and Deploy Frontend to Frontend EC2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - frontend/**
+      - deploy/deploy-frontend.sh
+      - deploy/nginx.frontend.conf
+      - docker-compose.frontend.yml
+      - .github/workflows/deploy-frontend-ec2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy-frontend:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      FRONTEND_EC2_HOST: ${{ secrets.FRONTEND_EC2_HOST }}
+      FRONTEND_EC2_USER: ${{ secrets.FRONTEND_EC2_USER }}
+      FRONTEND_API_URL: ${{ secrets.FRONTEND_API_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install and build frontend
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          echo "VITE_API_URL=${FRONTEND_API_URL}" > .env.production
+          npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Allow temporary SSH from runner
+        run: |
+          set -euo pipefail
+
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=ip-address,Values=$FRONTEND_EC2_HOST" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "Could not find a running frontend EC2 instance for public IP: $FRONTEND_EC2_HOST"
+            exit 1
+          fi
+
+          SG_ID=$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query "Reservations[0].Instances[0].SecurityGroups[0].GroupId" \
+            --output text)
+
+          if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+            echo "Could not resolve Security Group for instance: $INSTANCE_ID"
+            exit 1
+          fi
+
+          RUNNER_IP=$(curl -s https://checkip.amazonaws.com | tr -d '\n')
+          if [ -z "$RUNNER_IP" ]; then
+            echo "Could not determine GitHub runner public IP"
+            exit 1
+          fi
+
+          echo "INSTANCE_ID=$INSTANCE_ID" >> "$GITHUB_ENV"
+          echo "SG_ID=$SG_ID" >> "$GITHUB_ENV"
+          echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
+
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_IP/32,Description=github-actions-temporary-ssh}]" \
+            || true
+
+      - name: Setup SSH key
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.FRONTEND_EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/frontend_ec2_key.pem
+          chmod 600 ~/.ssh/frontend_ec2_key.pem
+          ssh-keyscan -H "$FRONTEND_EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sync frontend files and deployment assets
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/frontend_ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$FRONTEND_EC2_USER@$FRONTEND_EC2_HOST" "mkdir -p ~/placement-management-system/frontend-deploy/dist"
+
+          rsync -avz --delete -e "ssh -i ~/.ssh/frontend_ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            frontend/dist/ \
+            "$FRONTEND_EC2_USER@$FRONTEND_EC2_HOST:~/placement-management-system/frontend-deploy/dist/"
+
+          rsync -avz -e "ssh -i ~/.ssh/frontend_ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            docker-compose.frontend.yml \
+            deploy/deploy-frontend.sh \
+            deploy/nginx.frontend.conf \
+            "$FRONTEND_EC2_USER@$FRONTEND_EC2_HOST:~/placement-management-system/"
+
+      - name: Deploy on frontend EC2
+        run: |
+          ssh -i ~/.ssh/frontend_ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$FRONTEND_EC2_USER@$FRONTEND_EC2_HOST" << 'EOF'
+            set -euo pipefail
+            cd ~/placement-management-system
+            chmod +x deploy/deploy-frontend.sh
+            ./deploy/deploy-frontend.sh
+          EOF
+
+      - name: Revoke temporary SSH from runner
+        if: always()
+        run: |
+          set +e
+          if [ -n "${SG_ID:-}" ] && [ -n "${RUNNER_IP:-}" ]; then
+            aws ec2 revoke-security-group-ingress \
+              --group-id "$SG_ID" \
+              --protocol tcp \
+              --port 22 \
+              --cidr "$RUNNER_IP/32"
+          fi
