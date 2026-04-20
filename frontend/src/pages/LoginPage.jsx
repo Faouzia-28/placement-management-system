@@ -21,7 +21,7 @@ export default function LoginPage(){
       else if(user.role === 'COORDINATOR') nav('/coordinator');
       else if(user.role === 'HEAD') nav('/head');
     }catch(e){ 
-      alert('Login failed. Please check your credentials.'); 
+      alert(e?.response?.data?.message || 'Login failed. Please check your credentials.'); 
     }finally{
       setLoading(false);
     }
