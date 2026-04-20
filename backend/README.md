@@ -8,7 +8,7 @@ A Node.js + Express + PostgreSQL backend for managing placement drives, student 
 
 - **Express Server**(`src/app.js`): Main API server handling HTTP requests for drives, registrations, analytics, etc.
 - **Job Queue**(`queue.js`): BullMQ-based queue infrastructure for background jobs, connecting to Redis.
-- **Worker** (`worker.js`): Background job processor handling:
+- **Worker** (`worker.js`): Background job processor handling :
   - `eligibility-filter`: Filter and store eligible students for a drive
   - `auto-publish`: Auto-publish a drive (run eligibility + store selections)
   - `export-registrations-csv`: Generate CSV exports of registrations

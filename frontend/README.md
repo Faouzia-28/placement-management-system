@@ -8,7 +8,7 @@ A modern, professional React dashboard for placement management system.
 - **Responsive Layout**: Works on desktop, tablet, and mobile devices
 - **Dashboard Overview**: Key metrics, recent activity, and quick actions
 - **Placement Drives**: Manage and track placement drives
-- **Student Management**: View and manage student profiles
+- **Student Management**:View and manage student profiles
 - **Analytics**: Comprehensive placement analytics and insights
 - **Settings**: User preferences and account management
 
