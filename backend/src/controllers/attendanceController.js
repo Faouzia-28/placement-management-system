@@ -33,6 +33,58 @@ async function getAttendanceLock(pool, drive_id) {
   };
 }
 
+async function getTableColumns(pool, tableName) {
+  const q = `
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = $1
+  `;
+  const res = await pool.query(q, [tableName]);
+  return new Set(res.rows.map((r) => r.column_name));
+}
+
+async function upsertFinishedDrive(pool, drive_id, regCount, presentCount, absentCount, drive) {
+  const cols = await getTableColumns(pool, 'finished_drives');
+  if (!cols.size) return;
+
+  const payload = {
+    drive_id,
+    company_name: drive.company_name,
+    job_title: drive.job_title,
+    interview_date: drive.interview_date,
+    total_registered: regCount,
+    total_present: presentCount,
+    total_absent: absentCount,
+    total_attended: presentCount,
+    total_selected: 0,
+    finished_date: new Date(),
+    finished_at: new Date()
+  };
+
+  const allowed = Object.keys(payload).filter((k) => cols.has(k));
+  if (!allowed.length) return;
+
+  if (cols.has('drive_id')) {
+    const updatable = allowed.filter((k) => k !== 'drive_id');
+    if (updatable.length) {
+      const setSql = updatable.map((k, idx) => `${k} = $${idx + 2}`).join(', ');
+      const updateParams = [drive_id, ...updatable.map((k) => payload[k])];
+      const updated = await pool.query(`UPDATE finished_drives SET ${setSql} WHERE drive_id = $1`, updateParams);
+      if (updated.rowCount > 0) return;
+    }
+  }
+
+  const insertCols = cols.has('drive_id') ? allowed : allowed.filter((k) => k !== 'drive_id');
+  if (!insertCols.length) return;
+
+  const valuesSql = insertCols.map((_, idx) => `$${idx + 1}`).join(', ');
+  const insertParams = insertCols.map((k) => payload[k]);
+  await pool.query(
+    `INSERT INTO finished_drives (${insertCols.join(', ')}) VALUES (${valuesSql})`,
+    insertParams
+  );
+}
+
 async function mark(req, res) {
   try {
     const drive_id = parseInt(req.params.id, 10);
@@ -126,40 +178,38 @@ async function publish(req, res) {
       await pool.query('UPDATE placement_drives SET attendance_published = true WHERE drive_id = $1', [drive_id]);
     }
     
-    // Insert into finished_drives
-    await pool.query(
-      `INSERT INTO finished_drives (drive_id, finished_date, total_registered, total_present, total_absent, company_name, job_title, interview_date)
-       VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (drive_id) DO UPDATE SET
-         finished_date = NOW(),
-         total_registered = $2,
-         total_present = $3,
-         total_absent = $4`,
-      [drive_id, regCount, parseInt(stats.present_count) || 0, parseInt(stats.absent_count) || 0, drive.company_name, drive.job_title, drive.interview_date]
-    );
+    const presentCount = parseInt(stats.present_count, 10) || 0;
+    const absentCount = parseInt(stats.absent_count, 10) || 0;
+
+    // Persist summary to finished_drives with schema-tolerant logic.
+    await upsertFinishedDrive(pool, drive_id, regCount, presentCount, absentCount, drive);
 
     const regStudents = await pool.query('SELECT student_id FROM drive_registrations WHERE drive_id = $1', [drive_id]);
     const studentIds = regStudents.rows.map((r) => r.student_id);
-    await notificationService.createForUsers(studentIds, {
-      title: 'Attendance Published',
-      message: `Attendance has been published for ${drive.company_name} - ${drive.job_title}.`,
-      type: 'info',
-      entity_type: 'drive',
-      entity_id: parseInt(drive_id, 10)
-    });
+    try {
+      await notificationService.createForUsers(studentIds, {
+        title: 'Attendance Published',
+        message: `Attendance has been published for ${drive.company_name} - ${drive.job_title}.`,
+        type: 'info',
+        entity_type: 'drive',
+        entity_id: parseInt(drive_id, 10)
+      });
 
-    await notificationService.createForRoles(['HEAD', 'COORDINATOR', 'STAFF'], {
-      title: 'Drive Completed',
-      message: `${drive.company_name} - ${drive.job_title} has been moved to finished drives.`,
-      type: 'success',
-      entity_type: 'drive',
-      entity_id: parseInt(drive_id, 10)
-    });
+      await notificationService.createForRoles(['HEAD', 'COORDINATOR', 'STAFF'], {
+        title: 'Drive Completed',
+        message: `${drive.company_name} - ${drive.job_title} has been moved to finished drives.`,
+        type: 'success',
+        entity_type: 'drive',
+        entity_id: parseInt(drive_id, 10)
+      });
+    } catch (notifyErr) {
+      console.warn('Publish completed but notification creation failed:', notifyErr.message);
+    }
     
     res.json({ message: 'Attendance published' });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ message: 'Error publishing attendance' });
+    res.status(500).json({ message: 'Error publishing attendance', detail: e.message });
   }
 }
 

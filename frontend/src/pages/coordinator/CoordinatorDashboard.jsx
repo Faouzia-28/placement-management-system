@@ -564,7 +564,8 @@ export default function CoordinatorDashboard(){
                                 loadAttendance();
                               } catch (e) {
                                 console.error('Publish attendance error:', e);
-                                alert('Error: ' + (e.response?.data?.message || e.message));
+                                const serverMsg = [e.response?.data?.message, e.response?.data?.detail].filter(Boolean).join(' - ');
+                                alert('Error: ' + (serverMsg || e.message));
                               }
                             }}
                             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
