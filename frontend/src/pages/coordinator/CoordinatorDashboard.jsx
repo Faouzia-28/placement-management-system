@@ -133,7 +133,7 @@ export default function CoordinatorDashboard(){
     acc[row.student_id] = row.status;
     return acc;
   }, {});
-  const attendanceLocked = !!driveDetails?.attendance_published;
+  const attendanceLocked = !!driveDetails?.attendance_published || driveDetails?.status === 'finished';
 
   async function loadRegistrations() {
     if (!selectedDrive) return;
@@ -226,8 +226,8 @@ export default function CoordinatorDashboard(){
 
   const pendingDrives = drives.filter(d => (d.status || 'pending') === 'pending');
   const postedDrives = drives.filter(d => (d.status || 'posted') === 'posted');
-  const ongoingDrives = drives.filter(d => d.status === 'attending' && !d.attendance_published);
-  const finishedDrives = drives.filter(d => d.attendance_published);
+  const ongoingDrives = drives.filter(d => d.status === 'attending' && !(d.attendance_published || d.status === 'finished'));
+  const finishedDrives = drives.filter(d => d.attendance_published || d.status === 'finished');
 
   return (
     <div className="min-h-screen flex bg-slate-100 dark:bg-gray-900 transition-colors duration-200">

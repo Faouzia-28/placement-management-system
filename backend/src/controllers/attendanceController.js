@@ -173,9 +173,27 @@ async function publish(req, res) {
     const regRes = await pool.query('SELECT COUNT(*) as reg_count FROM drive_registrations WHERE drive_id = $1', [drive_id]);
     const regCount = parseInt(regRes.rows[0].reg_count) || 0;
     
-    // Update placement_drives only when column exists in this environment.
-    if (lockState.hasColumn) {
-      await pool.query('UPDATE placement_drives SET attendance_published = true WHERE drive_id = $1', [drive_id]);
+    // Mark drive as finished in a schema-tolerant way.
+    const driveCols = await getTableColumns(pool, 'placement_drives');
+    const updates = [];
+    const updateParams = [];
+
+    if (driveCols.has('status')) {
+      updates.push(`status = $${updateParams.length + 1}`);
+      updateParams.push('finished');
+    }
+
+    if (driveCols.has('attendance_published')) {
+      updates.push(`attendance_published = $${updateParams.length + 1}`);
+      updateParams.push(true);
+    }
+
+    if (updates.length) {
+      updateParams.push(drive_id);
+      await pool.query(
+        `UPDATE placement_drives SET ${updates.join(', ')} WHERE drive_id = $${updateParams.length}`,
+        updateParams
+      );
     }
     
     const presentCount = parseInt(stats.present_count, 10) || 0;
